@@ -29,6 +29,7 @@ except ImportError:
 # = DEFAULTS =
 # ============
 
+env.NEWSBLUR_REPO = "https://github.com/charlesflynn/NewsBlur.git"
 env.NEWSBLUR_PATH = "~/projects/newsblur"
 env.SECRETS_PATH = "~/projects/secrets-newsblur"
 env.VENDOR_PATH   = "~/projects/code"
@@ -37,7 +38,7 @@ env.VENDOR_PATH   = "~/projects/code"
 # = Roles =
 # =========
 
-env.user = 'sclay'
+env.user = 'vagrant'
 try:
     hosts_path = os.path.expanduser(os.path.join(env.SECRETS_PATH, 'configs/hosts.yml'))
     roles = yaml.load(open(hosts_path))
@@ -100,7 +101,7 @@ def debug():
 
 def ec2():
     env.user = 'ubuntu'
-    env.key_filename = ['/Users/sclay/.ec2/sclay.pem']
+    env.key_filename = ['/Users/%s/.ec2/%s.pem' % env.user]
     server()
     
 # ==========
@@ -387,6 +388,8 @@ def setup_installs():
     with settings(warn_only=True):
         sudo('mkdir -p %s' % env.VENDOR_PATH)
         sudo('chown %s.%s %s' % (env.user, env.user, env.VENDOR_PATH))
+        sudo('mkdir -p %s' % env.NEWSBLUR_PATH)
+        sudo('chown %s.%s %s' % (env.user, env.user, env.NEWSBLUR_PATH))
     
 def setup_user():
     # run('useradd -c "NewsBlur" -m newsblur -s /bin/zsh')
@@ -406,11 +409,11 @@ def add_machine_to_ssh():
     
 def setup_repo():
     with settings(warn_only=True):
-        run('git clone https://github.com/samuelclay/NewsBlur.git ~/newsblur')
+        run('git clone %s %s' % (env.NEWSBLUR_REPO, env.NEWSBLUR_PATH))
     sudo('mkdir -p /srv')
     # with settings(warn_only=True):
     #     sudo('ln -f -s /home/%s/code /srv/' % env.user)
-    sudo('ln -f -s /home/%s/newsblur /srv/' % env.user)
+    sudo('ln -f -s %s /srv/' % env.NEWSBLUR_PATH)
 
 def setup_repo_local_settings():
     with cd(env.NEWSBLUR_PATH):
@@ -645,7 +648,7 @@ def update_gunicorn():
         sudo('python setup.py develop')
 
 def setup_staging():
-    run('git clone https://github.com/samuelclay/NewsBlur.git staging')
+    run('git clone %s staging' % (env.NEWSBLUR_REPO))
     with cd('~/staging'):
         run('cp ../newsblur/local_settings.py local_settings.py')
         run('mkdir -p logs')
@@ -673,9 +676,9 @@ def copy_app_settings():
 
 def copy_certificates():
     run('mkdir -p %s/config/certificates/' % env.NEWSBLUR_PATH)
-    put('../secrets-newsblur/certificates/comodo/newsblur.com.crt', '%s/config/certificates/' % env.NEWSBLUR_PATH)
-    put('../secrets-newsblur/certificates/comodo/newsblur.com.key', '%s/config/certificates/' % env.NEWSBLUR_PATH)
-    put('../secrets-newsblur/certificates/comodo/EssentialSSLCA_2.crt', '%s/config/certificates/intermediate.crt' % env.NEWSBLUR_PATH)
+    #put('../secrets-newsblur/certificates/comodo/newsblur.com.crt', '%s/config/certificates/' % env.NEWSBLUR_PATH)
+    #put('../secrets-newsblur/certificates/comodo/newsblur.com.key', '%s/config/certificates/' % env.NEWSBLUR_PATH)
+    #put('../secrets-newsblur/certificates/comodo/EssentialSSLCA_2.crt', '%s/config/certificates/intermediate.crt' % env.NEWSBLUR_PATH)
 
 @parallel
 def maintenance_on():
@@ -934,7 +937,7 @@ def setup_db_mdadm():
 def setup_original_page_server():
     setup_node()
     sudo('mkdir -p /srv/originals')
-    sudo('chown sclay.sclay -R /srv/originals')
+    sudo('chown %s.%s -R /srv/originals' % env.user)
     put('config/supervisor_node_original.conf', 
         '/etc/supervisor/conf.d/node_original.conf', use_sudo=True)
     sudo('supervisorctl reread')
@@ -1034,17 +1037,17 @@ def setup_do(name, size=2):
 def add_user_to_do():
     env.user = "root"
     with settings(warn_only=True):
-        run('useradd -m sclay')
-        setup_sudoers("sclay")
-    run('mkdir -p ~sclay/.ssh && chmod 700 ~sclay/.ssh')
-    run('rm -fr ~sclay/.ssh/id_dsa*')
-    run('ssh-keygen -t dsa -f ~sclay/.ssh/id_dsa -N ""')
-    run('touch ~sclay/.ssh/authorized_keys')
+        run('useradd -m %s' % env.user)
+        setup_sudoers(env.user)
+    run('mkdir -p ~%s/.ssh && chmod 700 ~%s/.ssh' % env.user)
+    run('rm -fr ~%s/.ssh/id_dsa*' % env.user)
+    run('ssh-keygen -t dsa -f ~%s/.ssh/id_dsa -N ""' % env.user)
+    run('touch ~%s/.ssh/authorized_keys' % env.user)
     put("~/.ssh/id_dsa.pub", "authorized_keys")
-    run('echo `cat authorized_keys` >> ~sclay/.ssh/authorized_keys')
+    run('echo `cat authorized_keys` >> ~%s/.ssh/authorized_keys' % env.user)
     run('rm authorized_keys')
-    run('chown sclay.sclay -R ~sclay/.ssh')
-    env.user = "sclay"
+    run('chown %s.%s -R ~%s/.ssh' % env.user)
+    env.user = "vagrant"
 
 # ===============
 # = Setup - EC2 =
@@ -1056,7 +1059,7 @@ def setup_ec2():
     INSTANCE_TYPE = 'c1.medium'
     conn = EC2Connection(django_settings.AWS_ACCESS_KEY_ID, django_settings.AWS_SECRET_ACCESS_KEY)
     reservation = conn.run_instances(AMI_NAME, instance_type=INSTANCE_TYPE,
-                                     key_name='sclay',
+                                     key_name=env.user,
                                      security_groups=['db-mongo'])
     instance = reservation.instances[0]
     print "Booting reservation: %s/%s (size: %s)" % (reservation, instance, INSTANCE_TYPE)
@@ -1093,7 +1096,7 @@ def restore_postgres(port=5433):
     # sudo('su postgres -c "createuser -p %s -U newsblur"' % (port,))
     run('dropdb newsblur -p %s -U postgres' % (port,), pty=False)
     run('createdb newsblur -p %s -O newsblur' % (port,), pty=False)
-    run('pg_restore -p %s --role=newsblur --dbname=newsblur /Users/sclay/Documents/backups/backup_postgresql_%s.sql.gz' % (port, backup_date), pty=False)
+    run('pg_restore -p %s --role=newsblur --dbname=newsblur /Users/%s/Documents/backups/backup_postgresql_%s.sql.gz' % (port, env.user, backup_date), pty=False)
     
 def restore_mongo():
     backup_date = '2012-07-24-09-00'
