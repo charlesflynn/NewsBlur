@@ -807,16 +807,19 @@ def setup_rabbitmq():
 #     sudo('apt-get -y install memcached')
 
 def setup_postgres(standby=False):
-    # shmmax = 1140047872
-    sudo('add-apt-repository ppa:pitti/postgresql')
+    shmmax = 1140047872
+    #sudo('add-apt-repository ppa:pitti/postgresql')
+    sudo('echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release --codename --short)-pgdg main" > /etc/apt/sources.list.d/pgdg.list')
+    run('wget --quiet -O - http://apt.postgresql.org/pub/repos/apt/ACCC4CF8.asc | sudo apt-key add -')
     sudo('apt-get update')
+    sudo('apt-get install -y pgdg-keyring')
     sudo('apt-get -y install postgresql-9.2 postgresql-client postgresql-contrib libpq-dev')
     put('config/postgresql%s.conf' % (
         ('_standby' if standby else ''),
     ), '/etc/postgresql/9.2/main/postgresql.conf', use_sudo=True)
-    # sudo('echo "%s" > /proc/sys/kernel/shmmax' % shmmax)
-    # sudo('echo "\nkernel.shmmax = %s" > /etc/sysctl.conf' % shmmax)
-    # sudo('sysctl -p')
+    sudo('echo "%s" > /proc/sys/kernel/shmmax' % shmmax)
+    sudo('echo "\nkernel.shmmax = %s" > /etc/sysctl.conf' % shmmax)
+    sudo('sysctl -p')
     
     if standby:
         put('config/postgresql_recovery.conf', '/var/lib/postgresql/9.1/recovery.conf', use_sudo=True)
